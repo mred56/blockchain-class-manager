@@ -1,0 +1,540 @@
+@test module;
+
+import main.*;
+
+val admin = rell.test.keypair(
+    priv = x"BFA940474287557001E987F77C503668935F6A173CB0282609E3DB43C080F47D",
+    pub = x"0207759A5477779AE68247C1319E1289715333EC90A7B88629607775598365E3E9"
+);
+
+val student_1 = rell.test.keypair(
+    priv = x"E67AE4290B813F2DA0FC6DBAEFE45BECDEB582B688BE02EF08FAAF0E5ECCE40D",
+    pub = x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90"
+);
+
+val student_2 = rell.test.keypair(
+    priv = x"1DD48DAEFDD32049F5347F1C7494368D906F413E2BC4B2B9A7A239EDE599AF61",
+    pub = x"029336E8AFE37F08F69896FB9EF4194D693C03C91823972F0CB66E65B02C1507D0"
+);
+
+val alice = rell.test.keypairs.alice;
+
+// Test Student
+function test_create_student() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_student(2, x"029336E8AFE37F08F69896FB9EF4194D693C03C91823972F0CB66E65B02C1507D0", "Frank", "Levi", "Liverpool"))
+        .sign(admin)
+        .run();
+
+    val all_students = student @* { };
+    
+    assert_equals(all_students.size(), 2);
+    assert_equals(all_students[0].name, "Martin");
+    assert_equals(all_students[0].surname, "Hover");
+    assert_equals(all_students[0].address, "Manchester");
+    assert_equals(all_students[1].name, "Frank");
+    assert_equals(all_students[1].surname, "Levi");
+    assert_equals(all_students[1].address, "Liverpool");
+}
+
+function test_create_student_as_non_admin() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_create_student_with_existing_ssn() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_student(1, x"029336E8AFE37F08F69896FB9EF4194D693C03C91823972F0CB66E65B02C1507D0", "Frank", "Levi", "Liverpool"))
+        .sign(admin)
+        .run_must_fail("Student with ssn 1 already exists");
+}
+
+function test_update_student_address() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(update_student_address(1, "London"))
+        .sign(admin)
+        .run();
+
+    val student = student @ { .ssn == 1 };
+
+    assert_equals(student.name, "Martin");
+    assert_equals(student.surname, "Hover");
+    assert_equals(student.address, "London");
+}
+
+function test_update_student_address_as_non_admin() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(update_student_address(1, "London"))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_update_student_address_with_invalid_ssn() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(update_student_address(2, "London"))
+        .sign(admin)
+        .run_must_fail("Student with ssn 2 not found");
+}
+
+function test_delete_student() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(delete_student(1))
+        .sign(admin)
+        .run();
+
+    val all_students = student @* { };
+
+    assert_equals(all_students.size(), 0);
+}
+
+function test_delete_student_as_non_admin() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(delete_student(1))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_delete_student_with_invalid_ssn() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(delete_student(2))
+        .sign(admin)
+        .run_must_fail("Student with ssn 2 not found");
+}
+
+function test_delete_student_with_enrollment() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .op(create_course(3, "Matehamtics", 5))
+        .sign(admin)
+        .run();
+
+    // SIGN WITH STUDENT 1
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .op(create_enrollment(1, 3))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_student(1))
+        .sign(admin)
+        .run();
+
+    val all_students = student @* { };
+    val enrollments = enrollment @* { .student.ssn == 1 };
+
+    assert_equals(all_students.size(), 0);
+    assert_equals(enrollments.size(), 0);
+}
+
+
+// Test Course
+function test_create_course() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(create_course(2, "Cryptography", 5))
+        .op(create_course(3, "Mathematics", 7))
+        .sign(admin)
+        .run();
+
+    val all_courses = course @* {};
+
+    assert_equals(all_courses.size(), 3);
+    assert_equals(all_courses[0].title, "Blockchain");
+    assert_equals(all_courses[0].credits, 6);
+    assert_equals(all_courses[1].title, "Cryptography");
+    assert_equals(all_courses[1].credits, 5);
+    assert_equals(all_courses[2].title, "Mathematics");
+    assert_equals(all_courses[2].credits, 7);
+}
+
+function test_create_course_as_non_admin() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(create_course(2, "Cryptography", 5))
+        .op(create_course(3, "Mathematics", 7))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_create_course_with_existing_id() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(create_course(1, "Cryptography", 5))
+        .sign(admin)
+        .run_must_fail("Course with id 1 already exists");
+}
+
+function test_update_course_credits() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(update_course_credits(1, 10))
+        .sign(admin)
+        .run();
+
+    val course = course @ { .id == 1 };
+
+    assert_equals(course.title, "Blockchain");
+    assert_equals(course.credits, 10);
+}
+
+function test_update_course_credits_as_non_admin() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(update_course_credits(1, 10))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_update_course_credits_with_invalid_id() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(update_course_credits(2, 10))
+        .sign(admin)
+        .run_must_fail("Course with id 2 not found");
+}
+
+function test_update_course_title() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(update_course_title(1, "Blockchain101"))
+        .sign(admin)
+        .run();
+
+    val course = course @ { .id == 1 };
+
+    assert_equals(course.title, "Blockchain101");
+    assert_equals(course.credits, 6);
+}
+
+function test_update_course_title_as_non_admin() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(update_course_title(1, "Blockchain101"))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_update_course_title_with_invalid_id() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(update_course_title(2, "Blockchain101"))
+        .sign(admin)
+        .run_must_fail("Course with id 2 not found");
+}
+
+function test_delete_course() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(delete_course(1))
+        .sign(admin)
+        .run();
+
+    val all_courses = course @* { };
+
+    assert_equals(all_courses.size(), 0);
+}
+
+function test_delete_course_as_non_admin() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(delete_course(1))
+        .sign(alice)
+        .run_must_fail("Only an admin can call this operation");
+}
+
+function test_delete_course_with_invalid_id() {
+    rell.test.tx()
+        .op(create_course(1, "Blockchain", 6))
+        .op(delete_course(2))
+        .sign(admin)
+        .run_must_fail("Course with id 2 not found");
+}
+
+function test_delete_course_with_enrollment() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_student(2, x"029336E8AFE37F08F69896FB9EF4194D693C03C91823972F0CB66E65B02C1507D0", "Frank", "Levi", "Liverpool"))
+        .op(create_course(3, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    // SIGN WITH STUDENT 2
+    rell.test.tx()
+        .op(create_enrollment(1, 3))
+        .sign(student_1)
+        .run();
+
+    // SIGN WITH STUDENT 3
+    rell.test.tx()
+        .op(create_enrollment(2, 3))
+        .sign(student_2)
+        .run();
+
+    rell.test.tx()
+        .op(delete_course(3))
+        .sign(admin)
+        .run();
+
+    val all_courses = course @* { };
+    val enrollments = enrollment @* { .course.id == 3 };
+
+    assert_equals(all_courses.size(), 0);
+    assert_equals(enrollments.size(), 0);
+}
+
+
+// Test Enrollment
+function test_add_enrollment() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin)
+        .run();
+
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run();
+
+    val student = student @ { .ssn == 1 };
+    val course = course @ { .id == 2 };
+    val enrollments = enrollment @* {};
+
+    assert_equals(enrollments.size(), 1);
+    assert_equals(student, enrollments[0].student);
+    assert_equals(course, enrollments[0].course);
+}
+
+function test_add_enrollment_with_wrong_key() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin)
+        .run();
+
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_2)
+        .run_must_fail("Only a student can enroll themselves into a course");
+}
+
+function test_add_enrollment_with_invalid_student_ssn() {
+    rell.test.tx()
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin);
+
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .run_must_fail("Student with ssn 1 not found");
+}
+
+function test_add_enrollment_with_invalid_course_id() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .sign(admin)
+        .run();
+
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run_must_fail("Course with id 2 not found");
+}
+
+function test_add_already_existing_enrollment() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run_must_fail("Enrollment with student ssn 1 and course id 2 already exists");
+}
+
+function test_delete_enrollment() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_enrollment(1, 2))
+        .sign(admin)
+        .run();
+
+    val enrollments = enrollment @* { };
+
+    assert_equals(enrollments.size(), 0);
+}
+
+function test_delete_enrollment_with_invalid_ssn() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_enrollment(5, 2))
+        .sign(admin)
+        .run_must_fail("Student with ssn 5 not found");
+}
+
+function test_delete_enrollment_with_invalid_id() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_enrollment(1, 6))
+        .sign(admin)
+        .run_must_fail("Course with id 6 not found");
+}
+
+function test_delete_unexisting_enrollment() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .op(create_course(3, "Mathematics", 5))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_enrollment(1, 3))
+        .sign(admin)
+        .run_must_fail("Enrollment with student ssn 1 and course id 3 not found");
+}
+
+function test_delete_all_student_enrollments() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .op(create_course(3, "Mathematics", 5))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .op(create_enrollment(1, 3))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_all_student_enrollments(1))
+        .sign(admin)
+        .run();
+
+    val enrollments = enrollment @* { .student.ssn == 1 };
+
+    assert_equals(enrollments.size(), 0);
+}
+
+function test_delete_all_student_enrollments_with_invalid_ssn() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_course(2, "Blockchain", 6))
+        .op(create_course(3, "Mathematics", 5))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 2))
+        .op(create_enrollment(1, 3))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(delete_all_student_enrollments(2))
+        .sign(admin)
+        .run_must_fail("Student with ssn 2 not found");
+}
+
+function test_delete_all_course_enrollments() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_student(2, x"029336E8AFE37F08F69896FB9EF4194D693C03C91823972F0CB66E65B02C1507D0", "Frank", "Levi", "Liverpool"))
+        .op(create_course(3, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 3))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(create_enrollment(2, 3))
+        .sign(student_2)
+        .run();
+
+    rell.test.tx()
+        .op(delete_all_course_enrollments(3))
+        .sign(admin)
+        .run();
+
+    val enrollments = enrollment @* { .course.id == 3 };
+
+    assert_equals(enrollments.size(), 0);
+}
+
+function test_delete_all_course_enrollments_with_invalid_id() {
+    rell.test.tx()
+        .op(create_student(1, x"0235D885A945E6E7311F1F944301836F69B29B2B5019C6FD640317DE150EEDBE90", "Martin", "Hover", "Manchester"))
+        .op(create_student(2, x"029336E8AFE37F08F69896FB9EF4194D693C03C91823972F0CB66E65B02C1507D0", "Frank", "Levi", "Liverpool"))
+        .op(create_course(3, "Blockchain", 6))
+        .sign(admin)
+        .run();
+    
+    rell.test.tx()
+        .op(create_enrollment(1, 3))
+        .sign(student_1)
+        .run();
+
+    rell.test.tx()
+        .op(create_enrollment(2, 3))
+        .sign(student_2)
+        .run();
+
+    rell.test.tx()
+        .op(delete_all_course_enrollments(2))
+        .sign(admin)
+        .run_must_fail("Course with id 2 not found");
+}

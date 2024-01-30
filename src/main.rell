@@ -1,0 +1,268 @@
+module;
+
+// Entities
+entity student {
+    key ssn: integer;
+    public_key: byte_array;
+    name: text;
+    surname: text;
+    mutable address: text;
+}
+
+entity course {
+    key id: integer;
+    mutable title: text;
+    mutable credits: integer;
+}
+
+entity enrollment {
+    index student: student;
+    index course: course;
+}
+
+
+// Structs
+struct student_enrollment_dto {
+    student: struct<student>;
+    course: course;
+}
+
+struct course_enrollment_dto {
+    student: student;
+    course: struct<course>;
+}
+
+struct module_args {
+  admin_pubkey: byte_array;
+}
+
+// Student operations
+
+// Creates a new student record
+operation create_student(ssn: integer, public_key: byte_array, name: text, surname: text, address: text) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val studentExistence = student @? { .ssn == ssn };
+    require(studentExistence == null, "Student with ssn %s already exists".format(ssn));
+
+    create student(ssn = ssn, public_key=public_key, name = name, surname = surname, address = address);
+}
+
+// Update the address of an existing user
+operation update_student_address(ssn: integer, address: text) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val student = require (student @? { .ssn == ssn}, "Student with ssn %s not found".format(ssn));
+    update student ( address = address);
+}
+
+// Delete a student and enrollments associated with them
+operation delete_student(ssn: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val student = require (student @? { .ssn == ssn}, "Student with ssn %s not found".format(ssn));
+    delete enrollment @* { .student.ssn == ssn };
+    delete student;
+}
+
+
+// Course operations
+
+// Creates a new course record
+operation create_course(id: integer, title: text, credits: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val courseExistence = course @? { .id == id };
+    require(courseExistence == null, "Course with id %s already exists".format(id));
+    create course(id = id, title = title, credits = credits);
+}
+
+// Update the cresits of an existing course
+operation update_course_credits(id: integer, credits: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val course = require (course @? { .id == id}, "Course with id %s not found".format(id));
+    update course ( credits = credits);
+}
+
+// Update the title of an existing course
+operation update_course_title(id: integer, title: text) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val course = require (course @? { .id == id}, "Course with id %s not found".format(id));
+    update course ( title = title);
+}
+
+// Delete a course and enrollments associated with it
+operation delete_course(id: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    val course = require (course @? { .id == id}, "Course with id %s not found".format(id));
+    delete enrollment @* { .course.id == id };
+    delete course;
+}
+
+
+// Enrollment operations
+
+// Creates a new enrollment
+operation create_enrollment(student_ssn: integer, course_id: integer) {
+    val student = require (student @? { .ssn == student_ssn }, "Student with ssn %s not found".format(student_ssn));
+    require(op_context.is_signer(student.public_key), "Only a student can enroll themselves into a course");
+    val course = require (course @? { .id == course_id }, "Course with id %s not found".format(course_id));
+    val enrollmentExistence = enrollment @? { .student.ssn == student_ssn, .course.id == course_id};
+    require(
+        enrollmentExistence == null,
+        "Enrollment with student ssn %s and course id %s already exists".format(student_ssn, course_id)
+    );
+    create enrollment (
+        .student = student,
+        .course = course
+    );
+}
+
+// Delete an existing enrollment
+operation delete_enrollment(student_ssn: integer, course_id: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    require (student @? { .ssn == student_ssn }, "Student with ssn %s not found".format(student_ssn));
+    require (course @? { .id == course_id }, "Course with id %s not found".format(course_id));
+    require (
+        enrollment @? { .student.ssn == student_ssn, .course.id == course_id },
+        "Enrollment with student ssn %s and course id %s not found".format(student_ssn, course_id)
+    );
+    delete enrollment @ { .student.ssn == student_ssn, .course.id == course_id};
+}
+
+// Delete all enrollments which exist for the student with given ssn
+operation delete_all_student_enrollments(ssn: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    require (student @? { .ssn == ssn }, "Student with ssn %s not found".format(ssn));
+    delete enrollment @* { .student.ssn == ssn };
+}
+
+// Delete all enrollments which exist for the course with given id
+operation delete_all_course_enrollments(id: integer) {
+    val adminPubkey = chain_context.args.admin_pubkey;
+    require(op_context.is_signer(adminPubkey), "Only an admin can call this operation");
+    require (course @? { .id == id }, "Course with id %s not found".format(id));
+    delete enrollment @* { .course.id == id };
+}
+
+
+// Student queries
+query get_all_students() {
+    return student @* { } (
+        .ssn,
+        .public_key,
+        .name,
+        .surname,
+        .address
+    );
+}
+
+query get_student_by_ssn(ssn: integer) {
+    require( student @? { .ssn == ssn }, "Student with ssn %s not found".format(ssn));
+    return student @ { .ssn == ssn } (
+        .ssn,
+        .public_key,
+        .name,
+        .surname,
+        .address
+    );
+}
+
+query get_student_by_name(name: text) {
+    require_not_empty( student @* { .name == name }, "Student with name %s not found".format(name));
+    return student @* { .name == name } (
+        .ssn,
+        .public_key,
+        .name,
+        .surname,
+        .address
+    );
+}
+
+// Course queries
+query get_all_courses() {
+    return course @* {} (
+        .id,
+        .title,
+        .credits
+    );
+}
+
+query get_course_by_id(id: integer) {
+    require( course @? { .id == id }, "Course with id %s not found".format(id));
+    return course @ { .id == id } (
+        .id,
+        .title,
+        .credits
+    );
+}
+
+query get_course_by_title(title: text) {
+    require_not_empty( course @* { .title == title }, "Course with title %s not found".format(title));
+    return course @* { .title == title } (
+        .id,
+        .title,
+        .credits
+    );
+}
+
+// Enrollment queries
+query get_all_enrollments() {
+    return enrollment @* {} (
+        .student,
+        .course
+    );
+}
+
+query get_enrollment(ssn: integer, id: integer) {
+    require( student @? { .ssn == ssn }, "Student with ssn %s not found".format(ssn));
+    require( course @? { .id == id }, "Course with id %s not found".format(id));
+    require (
+        enrollment @? { .student.ssn == ssn, .course.id == id },
+        "Enrollment with student ssn %s and course id %s not found".format(ssn, id)
+    );
+    return enrollment @ {} (
+        .student,
+        .course
+    );
+}
+
+query get_student_enrollments(ssn: integer) {
+    require( student @? { .ssn == ssn }, "Student with ssn %s not found".format(ssn));
+    val enrollments = enrollment @* { .student.ssn == ssn } (
+        student_enrollment_dto(
+            student = .student.to_struct(),
+            .course
+        )
+    );
+
+    return enrollments;
+}
+
+query get_course_enrollments(id: integer) {
+    require( course @? { .id == id }, "Course with id %s not found".format(id));
+    val enrollments = enrollment @* { .course.id == id } (
+        course_enrollment_dto(
+            .student,
+            course = .course.to_struct()
+        )
+    );
+
+    return enrollments;
+}
+
+// Number of enrollments in a course
+query get_course_enrollments_size(id: integer) {
+    require( course @? { .id == id }, "Course with id %s not found".format(id));
+    val enrollments = enrollment @* { .course.id == id } (
+        .student,
+        .course
+    );
+
+    return enrollments.size();
+}

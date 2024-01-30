@@ -1,0 +1,16 @@
+blockchains:
+  students-and-courses:
+    module: main
+    moduleArgs:
+      main:
+        admin_pubkey: "031F31D1DC72F7129DBF57C2738687538F18453EA71CDBCD18F02CADFF6CE8CD64"
+compile:
+  rellVersion: 0.12.0
+database:
+  schema: schema_students_and_courses
+test:
+  modules:
+    - test
+  moduleArgs:
+    main:
+      admin_pubkey: "0207759A5477779AE68247C1319E1289715333EC90A7B88629607775598365E3E9"
